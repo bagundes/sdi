@@ -14,7 +14,7 @@ namespace SDI.documents
             var dest = Conn.DI.GetBusinessObject((SAPbobsCOM.BoObjectTypes)to) as SAPbobsCOM.Documents;
 
             if (!orig.GetByKey(docEntry))
-                throw new LException(1, $"Document {docEntry} (type {objType}) not exists");
+                throw new SDIException(1, $"Document {docEntry} (type {objType}) not exists");
 
             dest.CardCode = orig.CardCode;
 
@@ -33,7 +33,7 @@ namespace SDI.documents
             var res = dest.Add();
 
             if (res != 0)
-                throw new LException(Conn.DI.GetLastErrorDescription());
+                throw new SDIException(Conn.DI.GetLastErrorDescription());
             else
                 return int.Parse(Conn.DI.GetNewObjectKey());
         }

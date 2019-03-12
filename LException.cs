@@ -6,18 +6,18 @@ using System.Threading.Tasks;
 
 namespace SDI
 {
-    internal class LException : klib.implement.LException
+    public class SDIException : klib.Implement.InternalException
     {
         public override string Message => MsgDecode(R.Project.LocationResx);
-        public LException(string message) : base(message)
+        public SDIException(string message) : base(message)
         {
         }
 
-        public LException(Exception ex) : base(ex)
+        public SDIException(Exception ex) : base(ex)
         {
         }
 
-        public LException(int code, params object[] values) : base(code, values)
+        public SDIException(int code, params object[] values) : base(code, values)
         {
         }
     }

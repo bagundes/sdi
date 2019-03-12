@@ -127,12 +127,15 @@
     <value>[{0}0003] - Type of table not exists.</value>
   </data>
   <data name="L00004_3" xml:space="preserve">
-    <value>[{0}0004] - Error to try create the {0} table. {1} - {2}</value>
+    <value>[{0}0004] - Error to try create the {1} table. {2} - {3}</value>
   </data>
   <data name="L00005_2" xml:space="preserve">
     <value>[{0}0005] - The {1}.{2} parameter required.</value>
   </data>
   <data name="L00006_1" xml:space="preserve">
     <value>[{0}0006] - The Query Manager with {0} not exists in SAP B1.</value>
+  </data>
+  <data name="L00007_3" xml:space="preserve">
+    <value>[{0}0007] - It's not possible to attaching the {1} file. Motive: {2}</value>
   </data>
 </root>

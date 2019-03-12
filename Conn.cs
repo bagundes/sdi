@@ -7,39 +7,49 @@ using System.Threading.Tasks;
 
 namespace SDI
 {
-    public class Conn
-    {
-        private const string LOG = "SDICON";
-        public static bool InitStart = true;
-        public enum TypeConn
-        {
-            Hana,
-            MSQL,
-            Others,
-            None,
-        }        
 
-        public static SAPbobsCOM.Company DI;
-        internal static TypeConn DataBase
+    /// <summary>
+    /// Class to connect SAP using DI API.
+    /// </summary>
+    public class Conn
+    {        
+        private static string LOG => "CONN";
+
+        /// <summary>
+        /// Execute the Init class
+        /// </summary>
+
+        /// <summary>
+        /// On the last attempt there was a connection error
+        /// </summary>
+        public static bool Fail { get; protected set; } = false;
+        /// <summary>
+        /// DI connection
+        /// </summary>
+        public static SAPbobsCOM.Company DI { get; protected set; }
+                
+        public static E.DataBase.Types DataBase
         {
             get
             {
                 if (DI == null || !DI.Connected)
-                    return TypeConn.None;
+                    return E.DataBase.Types.None;
 
                 switch((int)DI.DbServerType)
                 {
-                    case 1: return TypeConn.MSQL;
-                    case 4: return TypeConn.MSQL;
+                    case 1: return E.DataBase.Types.MSQL;
+                    case 4: return E.DataBase.Types.MSQL;
                     case 6:
                     case 7:
-                    case 8: return TypeConn.MSQL;
-                    case 9: return TypeConn.Hana;
-                    case 10: return TypeConn.MSQL;
-                    default: throw new LException(1, $"Database {DI.DbServerType.ToString()} isn't defined");
+                    case 8: return E.DataBase.Types.MSQL;
+                    case 9: return E.DataBase.Types.Hana;
+                    case 10: return E.DataBase.Types.MSQL;
+                    default: throw new SDIException(1, $"SDI: Database {DI.DbServerType.ToString()} isn't defined");
                 }
             }
         }
+
+        #region Connections
         public static void Connect(int serverType, string server, string database, string user, string passwd, string dbuser, string dbpasswd)
         {            
             try
@@ -54,87 +64,72 @@ namespace SDI
                 DI.Password = passwd;
                 DI.DbUserName = dbuser;
                 DI.DbPassword = dbpasswd;
-                klib.Shell.WriteLine(R.Project.ID, LOG, $"Trying to connect {DI.Server} server");
+                klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI: Trying to connect {DI.Server} server");
                 var res = DI.Connect();
                 
                 if (res != 0)
                 {
+                    Fail = true;
                     var error = DI.GetLastErrorDescription();
-                    klib.Shell.WriteLine(R.Project.ID, $"SAP DI: Error {error}");
-                    throw new LException(1, $"{DI.GetLastErrorCode()} - {error}");
+                    klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI: Error {error}");
+                    throw new SDIException(1, $"{DI.GetLastErrorCode()} - {error}");
                 } else
                 {
-                    if (InitStart)
-                        Init();
+                    Fail = false;
                 }
 
-                klib.Shell.WriteLine(R.Project.ID, LOG, $"Connected with {DI.UserName} user");
+                klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI: Connected with {DI.UserName} user");
             }
             finally
             {
 
             }
         }
-        public static void Connect(klib.dbase.DbClient cnn, klib.model.Credentials1 cred)
+        public static void Connect(klib.DB.DbClient cnn, klib.model.Credentials1 cred)
         {
             BoDataServerTypes version;
 
-            switch(cnn.Version)
+            switch(cnn.Version())
             {
-                case 2005: version = BoDataServerTypes.dst_MSSQL2005; break;
-                case 2008: version = BoDataServerTypes.dst_MSSQL2008; break;
-                case 2012: version = BoDataServerTypes.dst_MSSQL2012; break;
-                case 2014: version = BoDataServerTypes.dst_MSSQL2014; break;
-                case 2016: version = BoDataServerTypes.dst_MSSQL2016; break;
+                case 9: version = BoDataServerTypes.dst_MSSQL2005; break;
+                case 10: version = BoDataServerTypes.dst_MSSQL2008; break;
+                case 11: version = BoDataServerTypes.dst_MSSQL2012; break;
+                case 12: version = BoDataServerTypes.dst_MSSQL2014; break;
+                case 13: version = BoDataServerTypes.dst_MSSQL2016; break;
                 default:
-                    throw new LException(1, "Version of SQL Server isn't implementation");
+                    throw new SDIException(1, "Version of SQL Server isn't implementation");
 
             }
 
-            klib.Shell.WriteLine(R.Project.ID, $"SAP DI: Parameters DbClient");
+            klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI: Parameters DbClient");
             Connect((int)version,
-                cnn.ConnString.DataSource,
-                cnn.ConnString.InitialCatalog,
+                cnn.StringConn.DataSource,
+                cnn.StringConn.InitialCatalog,
                 cred.User,
                 cred.Passwd,
-                cnn.ConnString.UserID,
-                cnn.ConnString.Password);
+                cnn.StringConn.UserID,
+                cnn.StringConn.Password);
 
         }
         public static void Connect(dynamic oCompany)
         {
-            klib.Shell.WriteLine(R.Project.ID, "SAP DI: Connecting SAP DI");
+            klib.Shell.WriteLine(R.Project.ID,LOG, "SDI - Connecting ...");
             DI = (SAPbobsCOM.Company)oCompany;
-            klib.Shell.WriteLine(R.Project.ID, $"SAP DI: Connected {DI.Server}.{DI.CompanyDB} with {DI.UserName}");
-            if (InitStart)
-                Init();
+            klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI - Connected {DI.Server}.{DI.CompanyDB} with {DI.UserName}");
         }
+        public static void Disconnect()
+        {
+            if (DI != null && DI.Connected)
+                DI.Disconnect();
+        }
+        #endregion
 
         public static string GetMessageError()
         {
             var msg = DI.GetLastErrorDescription();
             var code = DI.GetLastErrorCode();
-            klib.Shell.WriteLine(R.Project.ID,LOG, $"{code} - {msg}");
+            klib.Shell.WriteLine(R.Project.ID,LOG, $"SDI: {code} - {msg}");
             return msg;
-        }
-        private static void Init()
-        {
-            if(InitStart)
-            {
-                var init = new Init();
-                init.Construct();
-            }
-        }
-
-        public static void Disconnect()
-        {
-            if(DI != null && DI.Connected)
-                DI.Disconnect();
-        }
-
-        public static dynamic GetObject(BoObjectTypes Object)
-        {
-            return DI.GetBusinessObject(Object);
         }
     }
 }

@@ -19,7 +19,7 @@ namespace SDI.content {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "16.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "15.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     internal class Location {
@@ -88,7 +88,7 @@ namespace SDI.content {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to [{0}0004] - Error to try create the {0} table. {1} - {2}.
+        ///   Looks up a localized string similar to [{0}0004] - Error to try create the {1} table. {2} - {3}.
         /// </summary>
         internal static string L00004_3 {
             get {
@@ -111,6 +111,15 @@ namespace SDI.content {
         internal static string L00006_1 {
             get {
                 return ResourceManager.GetString("L00006_1", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to [{0}0007] - It&apos;s not possible to attaching the {1} file. Motive: {2}.
+        /// </summary>
+        internal static string L00007_3 {
+            get {
+                return ResourceManager.GetString("L00007_3", resourceCulture);
             }
         }
     }

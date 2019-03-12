@@ -17,15 +17,13 @@ namespace SDI
     {
         private const string LOG = "UDT";
         public bool SAPNotification = false;
+        public string Prefix = klib.R.Company.NS;
+
         /// <summary>
         /// Create without rules default;
         /// </summary>
         public bool Odd = false;
-        private enum TableType
-        {
-            udt,
-            saptables,
-        }
+
         public class UDOParams
         {
             /// <summary>
@@ -44,9 +42,8 @@ namespace SDI
         }
 
         #region properties
-        private readonly TableType typeTable;
+        private readonly E.DataBase.DataTable dataTable;
         private readonly string infix;
-        private readonly string prefix = klib.R.Company.NS;
         private readonly BoUTBTableType type;
         private readonly string description;
         private readonly string sapTable;
@@ -65,13 +62,13 @@ namespace SDI
             this.type = type;
             this.infix = infix.ToUpper();
             this.description = description;
-            typeTable = TableType.udt;
+            dataTable = E.DataBase.DataTable.UDT;
         }
 
         public UserDataTable(string sapTable)
         {
             this.sapTable = sapTable;
-            typeTable = TableType.saptables;
+            dataTable = E.DataBase.DataTable.SDT;
         }
 
         public void Save()
@@ -89,7 +86,7 @@ namespace SDI
             this.tableName = GetUserDataName(number);
 
             #region tables
-            if (typeTable == TableType.udt)
+            if (dataTable == E.DataBase.DataTable.UDT)
             {
                 SaveTable();
                 for (int i = 0; i < Children.Count; i++)
@@ -121,15 +118,15 @@ namespace SDI
                 tableNum = (int)addnumber;
 
 
-            switch (typeTable)
+            switch (dataTable)
             {
-                case TableType.udt:
-                    var name = $"@{prefix}_{infix}{addnumber}";
+                case E.DataBase.DataTable.UDT:
+                    var name = $"@{Prefix}_{infix}{addnumber}";
                     return name;
-                case TableType.saptables:
+                case E.DataBase.DataTable.SDT:
                     return sapTable;
                 default:
-                    throw new LException(3);
+                    throw new SDIException(3);
             }
 
 
@@ -137,6 +134,10 @@ namespace SDI
 
         private void SaveTable()
         {
+            // It's not possible to change the System Data Table.
+            if (dataTable == E.DataBase.DataTable.SDT)
+                return;
+
             #region Error -1120 : Error: Ref count for this object is higher then 0
             // Solution : https://archive.sap.com/discussions/thread/1958196
             var oRS = Conn.DI.GetBusinessObject(SAPbobsCOM.BoObjectTypes.BoRecordset) as SAPbobsCOM.Recordset;
@@ -160,17 +161,16 @@ namespace SDI
             GC.Collect();
             GC.WaitForPendingFinalizers();
 
-            var table = $"{prefix}: {description}".Replace("@", "");
-
             try
             {
                 var update = oUserTableMD.GetByKey(tableNameWithoutAt);
-                oUserTableMD.TableName = tableNameWithoutAt;
-                if (typeTable == TableType.udt)
+                
+                if(!update)
                 {
-                    oUserTableMD.TableDescription = table;
+                    oUserTableMD.TableName = tableNameWithoutAt;
                     oUserTableMD.TableType = this.type;
                 }
+                oUserTableMD.TableDescription = $"{Prefix}: {description}".Replace("@", "");
 
 
                 if (update)
@@ -179,9 +179,9 @@ namespace SDI
                     error = oUserTableMD.Add();
 
                 if (error != 0)
-                    throw new LException(4, tableName, error, Conn.DI.GetLastErrorDescription());
+                    throw new SDIException(4, tableName, error, Conn.DI.GetLastErrorDescription());
                 else
-                    klib.Shell.WriteLine(R.Project.ID, LOG, $"The {tableName} table was created");
+                    klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI - The {tableName} table was created");
 
 
             }
@@ -213,10 +213,10 @@ namespace SDI
                 if (name.Substring(0, 2) == "U_")
                     name = name.Substring(2);
 
-                if (typeTable == TableType.saptables)
-                    name = $"{prefix}{name}".ToUpper();
+                if (dataTable == E.DataBase.DataTable.SDT)
+                    name = $"{Prefix}{name}".ToUpper();
 
-                klib.Shell.WriteLine(R.Project.ID, LOG, $"Creating/Updating the {tableName}.{name} column");
+                klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI - Creating/Updating the {tableName}.{name} column");
                 var oUserFieldsMD = Conn.DI.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oUserFields) as SAPbobsCOM.UserFieldsMD;
 
                 try
@@ -224,14 +224,14 @@ namespace SDI
                     string sql = String.Empty;
                     switch (Conn.DataBase)
                     {
-                        case Conn.TypeConn.MSQL:
+                        case E.DataBase.Types.MSQL:
                         //sql = "SELECT FieldId FROM CUFD WHERE TableID = '{0}' AND AliasID = '{1}'"; break;
-                        case Conn.TypeConn.Hana:
+                        case E.DataBase.Types.Hana:
                             sql = @" SELECT ""FieldID"" FROM ""CUFD"" WHERE ""TableID"" = {0} AND ""AliasID"" = {1} "; break;
-                        default: throw new LException(1, "The database isn't developed");
+                        default: throw new SDIException(1, "The database isn't developed");
                     }
 
-                    var fieldId = RSEx.First(sql, tableName, name).ToNInt();
+                    var fieldId = klib.DB.ExtensionDb.First(sql, tableName, name).ToNInt();
                     var update = false;
                     var error = 0;
 
@@ -240,7 +240,7 @@ namespace SDI
 
                     if (column.Size > 254 && column.Type == BoFieldTypes.db_Alpha && column.SubType == BoFldSubTypes.st_None)
                     {
-                        klib.Shell.WriteLine(R.Project.ID, LOG, $"The {tableName}{name} column resize from {column.Size} to 254");
+                        klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI - The {tableName}{name} column resize from {column.Size} to 254");
                         column.Size = 254;
                     }
 
@@ -264,7 +264,7 @@ namespace SDI
                         
                         var vvalues = new List<klib.model.Select>();
                         #region Loading existing valid values
-                        using (var rs = new klib.dbase.DbClient())
+                        using (var rs = new klib.DB.DbClient())
                         {
                             var sql1 = @"
 SELECT	 UFD1.IndexID
@@ -310,7 +310,7 @@ WHERE	 CUFD.TableID = {0}
 
                     // @bfagundes - Error -2035 Ignored beacause the column already exist.
                     if (error != 0 && error != -2035 && error != -1029)
-                        throw new LException(4, tableName, error, Conn.GetMessageError());                        
+                        throw new SDIException(4, tableName, error, Conn.GetMessageError());                        
                 }
                 finally
                 {
@@ -355,7 +355,7 @@ WHERE	 CUFD.TableID = {0}
                     error = oUserObjectsMD.Add();
 
                 if (error != 0 && error != -1029) // Error -1029 : Not possible update the UDO.
-                    throw new LException(4, name, error, Conn.DI.GetLastErrorDescription());
+                    throw new SDIException(4, name, error, Conn.DI.GetLastErrorDescription());
             }
             finally
             {
@@ -379,7 +379,7 @@ WHERE	 CUFD.TableID = {0}
                 var update = oUserObjectsMD.GetByKey(name);
 
                 if (!update)
-                    throw new LException(4, name, error, "UDO not found");
+                    throw new SDIException(4, name, error, "UDO not found");
 
 
                 foreach (var child in Children)
@@ -392,7 +392,7 @@ WHERE	 CUFD.TableID = {0}
                 error = oUserObjectsMD.Update();
 
                 if (error != 0)
-                    throw new LException(4, name, error, Conn.DI.GetLastErrorDescription());
+                    throw new SDIException(4, name, error, Conn.DI.GetLastErrorDescription());
 
             }
             finally
@@ -481,19 +481,21 @@ WHERE	 CUFD.TableID = {0}
         {
             try
             {
-                var verString = RSEx.First($"SELECT Name FROM [@TS_CONTROL0] WHERE U_PROJECT = {v.Major}");
+                var verString = klib.DB.ExtensionDb.First($"SELECT Name FROM [@TS_CONTROL0] WHERE U_PROJECT = {v.Major} ORDER BY CODE DESC");
                 if (!verString.IsEmpty)
                 {
                     var ver1 = new Version(verString.ToString());
+                    klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI - Server Version: {ver1.ToString()}/App Version: {v.ToString()}");
                     return (ver1.CompareTo(v) < 0);
                 }
                 else
                 {
+                    klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI - Server Version: none/App Version: {v.ToString()}");
                     return true;
                 }
             }catch(Exception ex)
             {
-                klib.Shell.WriteLine(R.Project.ID, ex.Message);
+                klib.Shell.WriteLine(R.Project.ID, LOG, ex.Message);
                 return true;
             }
         }
@@ -507,13 +509,13 @@ WHERE	 CUFD.TableID = {0}
             if (!IsNewVersion(v))
                 return;
             // TODO - It's necessary to change General Service
-            var lastcode = RSEx.First("SELECT ISNULL(MAX(Code),0) Code FROM [@TS_CONTROL0]").ToInt();
+            var lastcode = klib.DB.ExtensionDb.First("SELECT ISNULL(MAX(Code),0) Code FROM [@TS_CONTROL0]").ToInt();
             var sql = @"INSERT INTO [@TS_CONTROL0] VALUES({0},{1},{2},{3},{4})";
 
             using (var rs = new SDI.ResultSet())
                 rs.NoQuery(sql, lastcode + 1, v, v.Major, v.Build, v.Revision);
 
-            klib.Shell.WriteLine(R.Project.ID, $"VRSION: Updated to version {v.ToString()}");
+            klib.Shell.WriteLine(R.Project.ID, LOG, $"SDI - Updated to version {v.ToString()}");
         }
     }
    

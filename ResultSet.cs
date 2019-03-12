@@ -6,10 +6,11 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using klib;
+using klib.Implement;
 
 namespace SDI
 {
-    public class ResultSet : klib.implement.IDbClient
+    public class ResultSet : klib.Implement.DBFix, klib.Implement.IDBClient
     {
         private SAPbobsCOM.Recordset RS = Conn.DI.GetBusinessObject(SAPbobsCOM.BoObjectTypes.BoRecordset) as SAPbobsCOM.Recordset;
         private SAPbobsCOM.Fields fields;
@@ -18,12 +19,18 @@ namespace SDI
 
         public bool IsFirstLine => firstLine;
 
+        public string LastCommand { get; protected set; }
+
+        int IDBClient.TotalRows => throw new NotImplementedException();
+
+        public int TotalColumns => throw new NotImplementedException();
+
         public int CountColumns()
         {
             return RS.Fields.Count;
         }
 
-        public int CountRows()
+        public int TotalRows()
         {
             return RS.RecordCount;
         }
@@ -41,20 +48,21 @@ namespace SDI
             GC.Collect();
         }
 
-        public dynamic Do(dynamic alias, params object[] values)
+        private void Open()
         {
-            throw new NotImplementedException();
+                RS = Conn.DI.GetBusinessObject(SAPbobsCOM.BoObjectTypes.BoRecordset) as SAPbobsCOM.Recordset;
         }
 
         public int DoQuery(string sql, params object[] values)
         {
+            Open();
             Columns = new List<string>();
-            sql = String.Format(klib.ValuesEx.NS(sql), FixValues(values));
+            LastCommand = String.Format(base.Tags(sql), FixValues(values));
 
-            RS.DoQuery(sql);
+            RS.DoQuery(LastCommand);
             firstLine = true;
             fields = RS.Fields;
-            
+
             for (int i = 0; i < RS.Fields.Count; i++)
                 Columns.Add(RS.Fields.Item(i).Name.ToString().ToUpper());
 
@@ -66,23 +74,23 @@ namespace SDI
             throw new NotImplementedException();
         }
 
-        public Values Field(object index)
+        public Dynamic Field(object index)
         {
             if (index.GetType() == typeof(String))
                 index = Columns.IndexOf(index.ToString().ToUpper());
 
-            return new Values(fields.Item(index).Value);
+            return new Dynamic(fields.Item(index).Value, fields.Item(index).Name);
         }
 
-        public Dictionary<string, Values> Fields(bool upper = true)
+        public List<Dynamic> Fields(bool upper = true)
         {
-            var line = new Dictionary<string, Values>();
+            var line = new List<Dynamic>();
             for (int i = 0; i < CountColumns(); i++)
             {
                 if (upper)
-                    line.Add(fields.Item(i).Name.ToUpper(), new Values(fields.Item(i).Value));
+                    line.Add(new Dynamic(fields.Item(i).Value, fields.Item(i).Name.ToUpper()));
                 else
-                    line.Add(fields.Item(i).Name, new Values(fields.Item(i).Value));
+                    line.Add(new Dynamic(fields.Item(i).Value, fields.Item(i).Name));
             }
 
             return line;
@@ -93,26 +101,26 @@ namespace SDI
             RS.MoveFirst();
         }
 
-        public object[] FixValues(object[] values, bool manipulation = false)
-        {
-            var descr = manipulation ? "''''" : "''";
-            var open = manipulation ? "''" : "'";
+        //public object[] FixValues(object[] values, bool manipulation = false)
+        //{
+        //    var descr = manipulation ? "''''" : "''";
+        //    var open = manipulation ? "''" : "'";
 
-            for (int i = 0; i < values.Length; i++)
-            {
-                if (values[i] == null)
-                {
-                    values[i] = "null";
-                    continue;
-                }
+        //    for (int i = 0; i < values.Length; i++)
+        //    {
+        //        if (values[i] == null)
+        //        {
+        //            values[i] = "null";
+        //            continue;
+        //        }
 
-                values[i] = klib.ValuesEx.NS(values[i].ToString());
-                values[i] =  $"{open}{values[i].ToString().Replace("'", descr)}{open}";
-            }
-            
+        //        values[i] = Tags(values[i].ToString());
+        //        values[i] = $"{open}{values[i].ToString().Replace("'", descr)}{open}";
+        //    }
 
-            return values;
-        }
+
+        //    return values;
+        //}
 
         public void Last()
         {
@@ -142,10 +150,10 @@ namespace SDI
 
         public bool NoQuery(string sql, params object[] values)
         {
-            sql = String.Format(klib.ValuesEx.NS(sql), FixValues(values, true));
-            switch(Conn.DataBase)
+            sql = String.Format(Tags(sql), FixValues(values, true));
+            switch (Conn.DataBase)
             {
-                case Conn.TypeConn.MSQL:
+                case E.DataBase.Types.MSQL:
                     var sql1 = $"EXEC('{sql}')";
                     RS.DoQuery(sql1); break;
                 default:
@@ -154,60 +162,43 @@ namespace SDI
 
             return true;
         }
-    }
 
-    public static class RSEx
-    {
-        public static List<string> GetQueriesManager(string queryManagerPreFix)
+        public List<T> Result<T>() where T : BaseModel, new()
         {
-            var sql = $"SELECT QName FROM OUQR WHERE Qname LIKE '{queryManagerPreFix}%'";
-            return Column<string>(sql);
-        }
+            throw new NotImplementedException();
+            var list = new List<T>();
 
-        public static bool IsQueryManager(string qname)
-        {
-            var sql = "SELECT QName FROM OUQR WHERE Qname = {0}";
-            using (var rs = new ResultSet())
-                return rs.DoQuery(sql, qname) > 0;
-        }
-
-        public static ResultSet QueryManager(string qname, params object[] values)
-        {
-            var sql = @"SELECT QString FROM OUQR WHERE Qname = {0}";
-            var qstring = String.Empty;
-
-            using (var rs = new ResultSet())
+            while (Next())
             {
-                rs.DoQuery(sql, qname);
-
-                if (rs.Next())
-                    qstring = rs.Field(0).ToString();
-                else
-                    throw new LException(6, qname);
+                //var t = new T();
+                //list.Add(new T.Fileds());
             }
 
-            var rgx = new Regex(@"\[\%[0-9]\]");
-            var foo = rgx.Matches(qstring);
-
-            if(foo.Count != values.Length)
-                throw new LException(2, $"Quantity of paramters in {qname} isn't valid ({foo.Count}/{values.Length})");
-
-            for (int i = 0; i < foo.Count; i++)
-                qstring = qstring.Replace($"[%{i}]", "{" + i + "}");
-
-
-            var rs1 = new ResultSet();
-            rs1.DoQuery(sql, values);
-
-            return rs1;
-            
+            return list;
         }
 
-        public static ResultSet QueryManager(int code, int id, params object[] values)
+        DicDymanic IDBClient.Fields(bool upper_columns)
         {
             throw new NotImplementedException();
         }
 
+        public IEnumerable<T> Fields<T>() where T : BaseModel, new()
+        {
+            throw new NotImplementedException();
+        }
+
+        public int Version()
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+
+    /*
+    public static class RSEx
+    {
+
+        #region Query
         /// <summary>
         /// Verify if value exists in the table
         /// </summary>
@@ -235,9 +226,18 @@ namespace SDI
             }
         }
 
-        public static Dictionary<string, Values> Top1(string sql, params object[] values)
+        public static bool HasLines(string sql, params object[] values)
         {
-            var res = new Dictionary<string, Values>();
+            using (var rs = new ResultSet())
+            {
+                return rs.DoQuery(sql, values) > 0;
+            }
+        }
+
+        [Obsolete()]
+        public static List<Dynamic> Top1(string sql, params object[] values)
+        {
+            var res = new List<Dynamic>();
             using (var rs = new ResultSet())
             {
                 if (rs.DoQuery(sql, values) > 0)
@@ -263,25 +263,26 @@ namespace SDI
             {
                 rs.DoQuery(sql, values);
                 while (rs.Next())
-                    res.Add(rs.Field(0).Dynamic());
+                    res.Add(rs.Field(0).Value);
             }
 
             return res;
         }
 
-        public static Values First(string sql, params object[] values)
+        public static Dynamic First(string sql, params object[] values)
         {
             using (var rs = new ResultSet())
             {
                 if (rs.DoQuery(sql, values) > 0)
                     return rs.Field(0);
                 else
-                    return klib.ValuesEx.Empty;
+                    return klib.Dynamic.Empty;
             }
         }
+        #endregion
 
         #region Parameters
-        public static Values Parameter(int code, string parameter, string diff1, string diff2, string diff3, object def)
+        public static Dynamic Parameter(int code, string parameter, string diff1, string diff2, string diff3, object def)
         {
             try
             {
@@ -295,7 +296,7 @@ namespace SDI
             }
         }
 
-        public static Values Parameter(int code, string parameter, string diff1 = null, string diff2 = null, string diff3 = null)
+        public static Dynamic Parameter(int code, string parameter, string diff1 = null, string diff2 = null, string diff3 = null)
         {
             CreateParameter(code, parameter, diff1, diff2, diff3);
 
@@ -304,12 +305,12 @@ namespace SDI
             using (var cnn = new ResultSet())
             {
                 cnn.DoQuery(sql);
-                var result = klib.ValuesEx.Empty;
+                var result = klib.Dynamic.Empty;
                 if (cnn.Next())
-                    result = cnn.Fields()["VALUE"];
+                    result = cnn.Field("VALUE");
 
                 if (result.IsEmpty)
-                    throw new LException(5, code, parameter);
+                    throw new SDIException(5, code, parameter);
                 else
                     return result;
             }
@@ -324,7 +325,7 @@ namespace SDI
             using (var cnn = new ResultSet())
             {
                 cnn.DoQuery(sql);
-                var result = klib.ValuesEx.Empty;
+                var result = klib.Dynamic.Empty;
                 if (cnn.Next())
                 {
                     var value = cnn.Field("VALUE").ToString();
@@ -404,5 +405,23 @@ VALUES ({0},{1},{2},{3},{4},{5},{6},{7},{8})
         //}
         #endregion
 
-    }
+       
+
+        public static T Model<T>(string where) where T : SDI.Implement.UDT_Model, new()
+        {
+            using (var rs = new ResultSet())
+            {
+                var foo = new T();
+                var sql = $"SELECT * FROM [@!!_{foo.TableName}] WHERE {where}";
+                
+                if(rs.DoQuery(sql) > 0)
+                {
+                    foo.Load(rs.Fields());
+                }
+
+                return foo;
+            }
+        }
+       
+    }*/
 }

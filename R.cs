@@ -17,7 +17,7 @@ namespace SDI
             public static int ID => Version.Major;
             public const string SP_PARAM = "KK_PARAM";
             public static string[] Resources => assembly.GetManifestResourceNames();
-            public static ResourceManager LocationResx => new ResourceManager(Resources.Where(t => t.Contains("content.Location")).FirstOrDefault(), assembly);
+            public static ResourceManager LocationResx => new ResourceManager($"{typeof(R).Namespace}.content.Location{klib.R.Project.Language}", assembly);
         }
     }
 }
